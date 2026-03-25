@@ -2,7 +2,7 @@
 ### *You Click Apply. Your AI Agent Does Everything Else in Your Job Search Journey.*
 
 > **Presented at [OpenClaw Toronto Meetup](https://www.meetup.com/openclaw-toronto/) — March 26, 2026**
-> Built by [Kaan Turgut](https://x.com/hkaanturgut) | Hybrid Cloud Solution Architect @ Lenovo
+> Built by [Kaan Turgut](https://www.linkedin.com/in/hkaanturgut/)
 
 ---
 
