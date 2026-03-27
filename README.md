@@ -10,8 +10,8 @@
 
 A fully automated job search agent that runs 24/7 on your own server. Every night it:
 
-1. 🔍 **Searches** LinkedIn & Indeed for matching roles
-2. 📊 **Scores** each job against your resume (only 80+/100 qualify)
+1. 🔍 **Searches** JSearch API (Google for Jobs) for real job postings with direct apply links
+2. 📊 **Scores** each job against your resume — only 80+/100 qualify
 3. 👤 **Finds** the recruiter or hiring manager email via Hunter.io
 4. ✍️ **Drafts** a personalized cold outreach email using your real experience
 5. 📱 **Sends you a Telegram message** with all results + approval buttons
@@ -25,32 +25,41 @@ A fully automated job search agent that runs 24/7 on your own server. Every nigh
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    YOUR OPENCLAW SERVER                       │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              OpenClaw Gateway (Port 18789)           │   │
-│  │                                                     │   │
-│  │  ┌──────────┐  ┌───────────┐  ┌─────────────────┐  │   │
-│  │  │  Claude  │  │   Cron    │  │    Skills       │  │   │
-│  │  │Sonnet 4.6│  │  9 PM ET  │  │ job-auto-apply  │  │   │
-│  │  │(Anthropic│  │  Nightly  │  │ cold-email-     │  │   │
-│  │  │   API)   │  │  Search   │  │   writer        │  │   │
-│  │  └──────────┘  └───────────┘  │ apollo-api      │  │   │
-│  │                               └─────────────────┘  │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                           │                                  │
-└───────────────────────────┼──────────────────────────────────┘
-                            │
-          ┌─────────────────┼─────────────────┐
-          │                 │                 │
-          ▼                 ▼                 ▼
-   ┌─────────────┐  ┌──────────────┐  ┌─────────────┐
-   │  Hunter.io  │  │   Gmail API  │  │  Telegram   │
-   │  (Find      │  │  (Send cold  │  │  (Your      │
-   │  recruiter  │  │   emails)    │  │  approval   │
-   │  emails)    │  │              │  │  interface) │
-   └─────────────┘  └──────────────┘  └─────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                      YOUR OPENCLAW SERVER                          │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │              OpenClaw Gateway  ·  Port 18789              │   │
+│  │                                                          │   │
+│  │  ┌──────────────┐  ┌─────────────┐  ┌────────────────┐  │   │
+│  │  │    Claude    │  │ Nightly Cron│  │    Scripts     │  │   │
+│  │  │ Sonnet 4.6   │  │  9 PM ET    │  │ jsearch_jobs   │  │   │
+│  │  │(Anthropic API│  │  Scheduled  │  │ scorer.py      │  │   │
+│  │  │  Tier 2)     │  │             │  │ cold-email-    │  │   │
+│  │  └──────────────┘  └─────────────┘  │   writer       │  │   │
+│  │                                     │ gog (Gmail)    │  │   │
+│  │                                     └────────────────┘  │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                             │                                     │
+└─────────────────────────────┼─────────────────────────────────────┘
+                              │
+        ┌─────────────────────┼─────────────────┐
+        │                     │                 │
+        ▼                     ▼                 ▼
+ ┌─────────────┐   ┌─────────────────┐  ┌─────────────┐
+ │ JSearch API │   │   Gmail API     │  │  Telegram   │
+ │ (RapidAPI)  │   │  (gog skill)    │  │    Bot      │
+ │ Real job    │   │  Cold email     │  │  Approval   │
+ │ URLs via    │   │  delivery       │  │  interface  │
+ │ Google Jobs │   │                 │  │             │
+ └─────────────┘   └─────────────────┘  └─────────────┘
+        │
+        ▼
+ ┌─────────────┐
+ │  Hunter.io  │
+ │  Recruiter  │
+ │  email API  │
+ └─────────────┘
 ```
 
 ---
@@ -62,38 +71,47 @@ Every night at 9 PM Toronto time
            │
            ▼
    ┌───────────────┐
-   │  Search Jobs  │ ← LinkedIn + Indeed
-   │  Senior DevOps│   Remote Canada/Global
-   │  Platform Eng │   Posted last 7 days
-   │  SRE roles    │
+   │  JSearch API  │ ← 4 parallel queries via RapidAPI
+   │  Senior DevOps│   Senior DevOps / Platform Eng
+   │  Platform Eng │   SRE / Cloud Infra
+   │  SRE / Cloud  │   Posted last 14 days, Canada
    └───────┬───────┘
-           │
+           │  ~77 raw jobs found
            ▼
    ┌───────────────┐
-   │ Score Against │ ← Checks job-search-profile.md
-   │  Your Profile │   Min score: 80/100
-   │               │   Skips already-applied companies
+   │ Filter Phase  │ ← Python (not API params)
+   │               │   Last 14 days only
+   │               │   Valid apply link required
+   │               │   No Dice.com links
    └───────┬───────┘
-           │
+           │  ~26 pass filter
+           ▼
+   ┌───────────────┐
+   │ Score Against │ ← scorer.py
+   │  Your Profile │   Min score: 80/100
+   │               │   Skip already-contacted companies
+   │               │   Relax to 70 if < 5 results
+   └───────┬───────┘
+           │  Top 10 qualify
            ▼
    ┌───────────────┐
    │  Find Contact │ ← Hunter.io API
-   │  Recruiter or │   Domain search by company
-   │  Hiring Mgr   │   Gets name + verified email
+   │  Recruiter or │   Try 4 domain variations per company
+   │  Hiring Mgr   │   Priority: Eng Manager → VP Eng → Recruiter
    └───────┬───────┘
            │
            ▼
    ┌───────────────┐
    │  Draft Email  │ ← cold-email-writer skill
-   │  Personalized │   Mentions Canadian Tire + Lenovo
-   │  < 150 words  │   Tailored to each role
+   │  Personalized │   Unique subject per company
+   │  < 120 words  │   References job-specific skills
    └───────┬───────┘
            │
            ▼
    ┌───────────────┐
    │ Telegram Msg  │ ← Sent to your chat
-   │  10 jobs with │   With full email preview
-   │  approve/skip │   Approval buttons
+   │  10 jobs with │   Full email preview
+   │  approve/skip │   Real direct apply links
    └───────┬───────┘
            │
      ┌─────┴──────┐
@@ -106,10 +124,16 @@ Every night at 9 PM Toronto time
 │ email   │  │ as      │
 │ via     │  │ skipped │
 │ Gmail   │  │         │
-│         │  │         │
 │ 📝 Log  │  └─────────┘
 │ to MD   │
 └─────────┘
+           │
+           ▼
+   ┌───────────────┐
+   │ Save fallback │ ← last_good_results.json
+   │ If tomorrow's │   Used if live search fails
+   │ search fails  │   Silent fallback with timestamp
+   └───────────────┘
 ```
 
 ---
@@ -119,34 +143,31 @@ Every night at 9 PM Toronto time
 ```
 ━━━━━━━━━━━━━━━━━━━━━━
 🔢 JOB 1/10
-🏢 Company: Hopper
-💼 Role: Senior SRE / FinOps Engineer
-📊 Match Score: 91/100
-📍 Location: 100% Remote — Toronto base
-🔗 Apply: https://hopper.com/careers
+🏢 Company: [Target Company]
+💼 Role: Senior Platform Engineer (Canada) | Score: 92/100
+📍 Location: Remote — Canada
+📅 Posted: March 20, 2026
+🔗 APPLY: [https://company.com/careers/job/123456]
 ━━━━━━━━━━━━━━━━━━━━━━
-👤 Contact: Jonathan Ostrander | Engineering Manager
-📧 Email: jostrander@hopper.com
+👤 Contact: [Recruiter Name] | [Title]
+📧 Email: [recruiter@company.com]
 ━━━━━━━━━━━━━━━━━━━━━━
-📝 DRAFT EMAIL:
-Subject: Senior SRE Opportunity at Hopper - 6 Years DevOps Experience
+📝 DRAFT EMAIL
+Subject: Senior Platform Engineer — Azure + Terraform Expertise for [Target Company]
 
-Hi Jonathan,
+Hi [Recruiter Name],
 
-I'm excited about Hopper's growth and the Senior SRE/FinOps role.
-My background directly matches: 6 years of DevOps engineering at
-Canadian Tire (led 15-person team) and Lenovo (Hybrid Cloud Architect).
+[Target Company]'s platform engineering scope matches my background closely.
+At [Previous Employer] I led a 15-person DevOps team through full
+cloud transformation — Terraform IaC, AKS, GitHub Actions pipelines,
+and DR testing across 8 cloud-native apps. Now at [Current Employer] as
+Hybrid Cloud Solution Architect I design multi-cloud solutions daily.
 
-Specialized in Azure, Terraform, and GitHub Actions CI/CD pipelines.
-I thrive in high-reliability environments where cost optimization and
-operational excellence intersect.
+Happy to discuss how I can contribute to your platform goals.
 
-Would love to discuss how I can contribute to Hopper's infrastructure goals.
-
-Best, Kaan
+Best, [Your Name]
 ━━━━━━━━━━━━━━━━━━━━━━
-Reply "approve 1" → sends email + logs
-Reply "skip 1" → skips and notes reason
+✅ approve 1   |   ⏭️ skip 1
 ━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -159,26 +180,25 @@ Reply "skip 1" → skips and notes reason
 | AI Agent | [OpenClaw](https://github.com/openclaw/openclaw) | Self-hosted agent framework |
 | AI Model | Claude Sonnet 4.6 (Anthropic API) | Intelligence layer |
 | Messaging | Telegram Bot API | Approval interface |
-| Job Search | JobSpy (via job-auto-apply skill) | Multi-board job scraping |
+| Job Search | [JSearch API — RapidAPI](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch) | Real job URLs via Google for Jobs |
+| Job Scoring | `scorer.py` (custom script) | Profile-based scoring 0–100 |
 | Contact Finding | [Hunter.io API](https://hunter.io) | Recruiter email lookup |
 | Email Sending | Gmail API (via gog skill) | Outreach delivery |
 | Email Writing | cold-email-writer skill | Personalized drafts |
 | Server | Windows Server 2025 | Self-hosted runtime |
-| Remote Access | [Tailscale](https://tailscale.com) | Secure remote access |
+| Remote Access | [Tailscale](https://tailscale.com) | Secure RDP from Mac |
 
 ---
 
 ## 📋 Prerequisites
 
-Before starting, you need:
-
 - [ ] Windows Server / Linux machine (or any always-on computer)
 - [ ] [OpenClaw installed and running](https://docs.openclaw.ai/start/getting-started)
 - [ ] Anthropic API key ([console.anthropic.com](https://console.anthropic.com)) — Tier 2 recommended ($40 deposit)
 - [ ] Telegram account + Bot created via [@BotFather](https://t.me/botfather)
-- [ ] Gmail account
-- [ ] [Hunter.io](https://hunter.io) free account (25 searches/month free)
-- [ ] [Google Cloud project](https://console.cloud.google.com) with Calendar + Gmail APIs enabled
+- [ ] Gmail account + Google Cloud project (Gmail API + Calendar API enabled)
+- [ ] [RapidAPI account](https://rapidapi.com) — JSearch Basic plan ($10/month, 200 requests)
+- [ ] [Hunter.io](https://hunter.io) free account (25 searches/month)
 
 ---
 
@@ -191,13 +211,8 @@ Before starting, you need:
 > - [Onboarding CLI](https://docs.openclaw.ai/start/wizard)
 > - [Windows Setup](https://docs.openclaw.ai/platforms/windows)
 
-Run the onboarding wizard:
 ```bash
 openclaw onboard --install-daemon
-```
-
-Configure your Anthropic API key:
-```bash
 openclaw agents add main
 ```
 
@@ -205,10 +220,8 @@ openclaw agents add main
 
 ### Step 2 — Connect Telegram
 
-1. Open Telegram and message [@BotFather](https://t.me/botfather)
-2. Send `/newbot` and follow prompts
-3. Copy your bot token
-4. Add to OpenClaw config:
+1. Message [@BotFather](https://t.me/botfather) → `/newbot` → copy your token
+2. Add to OpenClaw config:
 
 ```json
 {
@@ -223,7 +236,7 @@ openclaw agents add main
 }
 ```
 
-5. Start the gateway and approve the pairing code:
+3. Start and pair:
 ```bash
 openclaw gateway start
 openclaw pairing list telegram
@@ -232,46 +245,59 @@ openclaw pairing approve telegram YOUR_CODE
 
 ---
 
-### Step 3 — Connect Gmail + Google Calendar
+### Step 3 — Connect Gmail
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Create a new project named `OpenClaw`
-3. Enable **Gmail API** and **Google Calendar API**
-4. Create OAuth credentials → Desktop app → Download `client_secret.json`
-5. Copy `client_secret.json` to your OpenClaw workspace:
+1. Go to [Google Cloud Console](https://console.cloud.google.com) → create project `OpenClaw`
+2. Enable **Gmail API** and **Google Calendar API**
+3. Create OAuth credentials → **Desktop app** → download `client_secret.json`
+4. Place it at:
 ```
-~/.openclaw/workspace/skills/gog/client_secret.json
+C:\Users\Administrator\.openclaw\workspace\skills\gog\client_secret.json
 ```
+5. Tell your bot:
+```
+The client_secret.json is in skills/gog/ — run the Google OAuth authentication flow now
+```
+6. Click the OAuth URL, sign in with your Gmail, copy the redirect URL back to your bot
 
-6. Tell your bot to authenticate:
-```
-The client_secret.json is in skills/gog/ — please run the Google OAuth authentication flow now
-```
-
-7. Click the OAuth URL, sign in, copy the redirect URL back to your bot
+> **Note:** Add your Gmail as a Test User in the OAuth consent screen before authenticating.
 
 ---
 
-### Step 4 — Set Up Hunter.io
+### Step 4 — Set Up JSearch (RapidAPI)
+
+1. Sign up at [rapidapi.com](https://rapidapi.com)
+2. Subscribe to [JSearch API](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch) — Basic plan ($10/month)
+3. Copy your `X-RapidAPI-Key`
+4. Tell your bot:
+```
+I have a JSearch API key from RapidAPI. Create jsearch_jobs.py in the workspace that calls:
+GET https://jsearch.p.rapidapi.com/search
+Headers: X-RapidAPI-Key: YOUR_KEY, X-RapidAPI-Host: jsearch.p.rapidapi.com
+Test it with query "Senior DevOps Engineer remote Canada", num_pages=1
+Show me the first 3 results with job_title, employer_name, job_apply_link
+```
+
+---
+
+### Step 5 — Set Up Hunter.io
 
 1. Sign up free at [hunter.io](https://hunter.io)
-2. Get your API key from the dashboard
+2. Copy your API key
 3. Tell your bot:
 ```
-Configure Hunter.io with this API key: YOUR_KEY
-Use it to find recruiter emails by calling:
-GET https://api.hunter.io/v2/domain-search?domain=COMPANY_DOMAIN&api_key=YOUR_KEY
+Configure Hunter.io with API key: YOUR_KEY
+For each company try these domain variations in order:
+1. Domain extracted from job_apply_link URL
+2. companyname.com
+3. companyname.ca
+Call: GET https://api.hunter.io/v2/domain-search?domain=DOMAIN&api_key=YOUR_KEY
 ```
 
 ---
 
-### Step 5 — Install Required Skills
+### Step 6 — Install Required Skills
 
-Send these messages to your bot one by one:
-
-```
-Install the job-auto-apply skill from ClawHub
-```
 ```
 Install the cold-email-writer skill from ClawHub
 ```
@@ -281,77 +307,85 @@ Install the gog skill from ClawHub
 
 ---
 
-### Step 6 — Save Your Job Search Profile
-
-Send this to your bot (customize with your details):
+### Step 7 — Save Your Job Search Profile
 
 ```
-You are my personal job search agent. Here is my profile, save it permanently:
+Save my permanent job search profile as job-search-profile.md:
 
 Name: [Your Name]
 Current Role: [Your Role] at [Company]
 Location: [City], Canada
 Target: Remote Canada or Remote anywhere
 
-Skills:
-- [Your skills list]
-
-Experience:
-- [X years] in [your field]
-- Key clients/companies: [list]
-
 Target roles:
-- [Role 1]
-- [Role 2]
-- [Role 3]
+- Senior DevOps Engineer
+- Platform Engineer
+- Site Reliability Engineer (SRE)
+- Cloud Infrastructure Engineer
+
+Skills: Azure, AWS, GCP, Terraform, Kubernetes, Docker, GitHub Actions,
+        Jenkins, Python, Bash, PowerShell, Helm, ArgoCD
+
+Key experience:
+- [Company A]: [what you did, team size, impact]
+- [Company B]: [what you did, team size, impact]
 
 Preferences:
-- Remote only
-- Full-time
-- Always require my confirmation before applying or sending any message
-- Max 5 applications per day
-- Start in dry-run mode first
-
-Save this as my permanent job search profile in job-search-profile.md
+- Remote only, full-time
+- Always require my confirmation before sending any email
 ```
 
 ---
 
-### Step 7 — Set Up the Nightly Cron Job
+### Step 8 — Deploy the Nightly Cron
 
 Send this to your bot:
 
 ```
-Set up a nightly job search cron job that runs every day at 9 PM Toronto time.
+Create nightly_job_search_stable.py in the workspace.
 
-Every night:
-1. Search LinkedIn and Indeed for [YOUR TARGET ROLES] - remote Canada or remote anywhere
-2. Score each job against my saved profile - only show scores above 80/100
-3. Skip any company already in job-applications.md
-4. Find top 10 NEW matches only
-5. For each match, use Hunter.io to find recruiter/hiring manager email
-6. Use cold-email-writer to draft personalized outreach mentioning [YOUR KEY EXPERIENCE]
-7. Send results to THIS Telegram chat in approval format
-8. When I approve, send email via Gmail and log to job-applications.md
-9. Never contact same person twice
+STEP 1 — SEARCH (4 parallel queries, 10s timeout each, retry once on fail):
+  "Senior DevOps Engineer remote Canada"
+  "Platform Engineer remote Canada"
+  "Site Reliability Engineer remote Canada"
+  "Cloud Infrastructure Engineer remote Canada"
+API: GET https://jsearch.p.rapidapi.com/search
+Params: num_pages=3, remote_jobs_only=true, date_posted=month
+Filter in Python: last 14 days, valid apply link, no Dice.com
 
-Save as cron job called "nightly-job-search". Run now as test.
+STEP 2 — SCORE with scorer.py against job-search-profile.md:
+  Title match: 30pts | Skills: 40pts | Remote: 20pts | <7 days: 10pts
+Keep 80+. Skip companies in job-applications.md.
+If fewer than 5 results, relax to 70/100.
+
+STEP 3 — HUNTER.IO (parallel): try 4 domains per company.
+Priority: Engineering Manager → VP Engineering → Technical Recruiter.
+
+STEP 4 — DRAFT via cold-email-writer: unique subject, <120 words,
+reference specific skills from the job description.
+
+STEP 5 — TELEGRAM: one message per job in approval format.
+Send final summary: X found → X filtered → X qualified → X contacts.
+
+STEP 6 — approve N: send email via Gmail, log to job-applications.md.
+        skip N: log as skipped.
+
+STEP 7 — FALLBACK: after every successful run save to last_good_results.json.
+If live search fails completely, load last_good_results.json and notify me.
+
+Save as cron "nightly-job-search" at 9 PM Toronto (America/Toronto).
+Run now as first test.
 ```
 
 ---
 
-### Step 8 — Organize with Telegram Topics (Optional but Recommended)
+### Step 9 — Organize with Telegram Topics (Optional)
 
-1. Create a Telegram group called `Your AI Hub`
-2. Add your bot as **Admin**
+1. Create a Telegram group — e.g. `Your AI Hub`
+2. Add your bot as **Admin** with full permissions
 3. Enable **Topics** in group settings
-4. Create topics:
-   - `🔍 Job Search`
-   - `☀️ Morning Brief`
-   - `📺 YouTube Digest`
-   - `⚙️ Config`
-
-5. In each topic, tell the bot:
+4. Create topics: `🔍 Job Search` · `☀️ Morning Brief` · `📺 YouTube Digest` · `⚙️ Config`
+5. In each topic send:
 ```
 You are now in the [Topic Name] topic. Always send [relevant content] to this topic only.
 ```
@@ -360,79 +394,77 @@ You are now in the [Topic Name] topic. Always send [relevant content] to this to
 
 ## 🔒 Security Considerations
 
-This agent has access to your email and job portals. Keep it safe:
-
 | Risk | Mitigation |
 |------|-----------|
-| API keys exposed | Never paste keys in chat — use terminal input |
+| API keys exposed | Never paste keys in Telegram chat — use terminal/PowerShell |
 | Unauthorized bot access | Use `dmPolicy: "pairing"` (default) |
-| Gateway exposed publicly | Keep bound to loopback, use Tailscale for remote access |
-| Malicious ClawHub skills | Check VirusTotal score before installing any skill |
-| Token bill explosion | Set monthly spend limit in Anthropic Console |
+| Gateway exposed publicly | Loopback only — use Tailscale for remote access |
+| Malicious ClawHub skills | Check VirusTotal before installing any skill |
+| API cost overrun | Set spend limits in Anthropic Console + RapidAPI dashboard |
 | Sending spam | Always use approval flow — never auto-send without confirmation |
 | Duplicate applications | Agent checks `job-applications.md` before every send |
 
-> **Key principle:** This runs on YOUR server. Your resume, emails, and job data never leave your machine. Unlike cloud AI tools, you own everything.
+> **Key principle:** This runs on YOUR server. Your resume, emails, and job data never leave your machine.
 
 ---
 
 ## 📁 File Structure
 
 ```
-~/.openclaw/
-├── openclaw.json              # Main config (model, Telegram, browser)
-├── workspace/
-│   ├── job-search-profile.md  # Your resume + preferences
-│   ├── job-applications.md    # Log of all applications sent
-│   ├── seen-videos.txt        # YouTube digest dedup list
-│   └── skills/
-│       ├── gog/               # Google Workspace (Gmail, Calendar)
-│       │   └── client_secret.json
-│       ├── job-auto-apply/    # Job search across platforms
-│       ├── cold-email-writer/ # Personalized email drafting
-│       └── apollo-api/        # Contact enrichment
-└── agents/
-    └── main/
-        └── agent/
-            └── auth-profiles.json  # API keys (Anthropic)
+C:\Users\Administrator\.openclaw\
+├── openclaw.json                        # Gateway config (model, Telegram)
+└── workspace/
+    ├── job-search-profile.md            # Your resume + target roles
+    ├── job-applications.md              # All sent/skipped applications log
+    ├── jsearch_results.json             # Raw JSearch API results
+    ├── last_good_results.json           # Fallback — last successful search
+    ├── workflow_results.json            # Scored + processed results
+    ├── jsearch_jobs.py                  # JSearch API caller
+    ├── scorer.py                        # Job scoring engine (0-100)
+    ├── nightly_job_search_stable.py     # Main cron script
+    └── skills/
+        ├── gog/                         # Google Workspace (Gmail + Calendar)
+        │   └── client_secret.json
+        └── cold-email-writer/           # Personalized email drafting
 ```
 
 ---
 
 ## 💡 Extending the Agent
 
-Once the job search agent is working, here are natural next steps:
-
 ### Morning Briefing
 ```
 Every morning at 8am Toronto time, send me:
 1. Today's weather in Toronto
 2. My Google Calendar events for today
-3. Top 3 AI and tech news - browse the web
-4. One build idea of the day
-5. What you recommend I focus on today
+3. Top 3 AI and DevOps news from the web
+4. One build idea for the day
 ```
 
 ### YouTube Digest
 ```
 Every morning at 9am, search YouTube for new videos about OpenClaw,
-Microsoft AI Foundry, and GitHub Copilot. For each new video get the
-transcript, give me 3 bullet summary, and note anything relevant to my work.
+Microsoft AI Foundry, and GitHub Copilot. For each new video give me
+a 3-bullet summary and note anything relevant to my work.
 ```
 
 ### Interview Prep Agent
 ```
-I have a meeting at [company] tomorrow. Research them, pull our email history,
-find 3 talking points, and send me a prep brief tonight.
+I have an interview at [company] tomorrow. Research them, pull our
+email history, find 3 talking points, and send me a prep brief tonight.
+```
+
+### Auto Follow-up
+```
+5 days after any "outreach sent" entry in job-applications.md with no
+reply, draft a follow-up email and send it to me for approval.
 ```
 
 ---
 
 ## 🤝 Contributing
 
-This use case was built for the [awesome-openclaw-usecases](https://github.com/hesamsheikh/awesome-openclaw-usecases) repo.
-
-If you build on this or improve it, please submit a PR there. The repo has 26k+ stars and your contribution will help thousands of people.
+Built for the [awesome-openclaw-usecases](https://github.com/hesamsheikh/awesome-openclaw-usecases) repo. If you improve on this, please submit a PR there.
 
 ---
 
@@ -441,7 +473,7 @@ If you build on this or improve it, please submit a PR there. The repo has 26k+ 
 - [OpenClaw GitHub](https://github.com/openclaw/openclaw)
 - [OpenClaw Docs](https://docs.openclaw.ai)
 - [awesome-openclaw-usecases](https://github.com/hesamsheikh/awesome-openclaw-usecases)
-- [ClawHub Skills Registry](https://clawhub.com)
+- [JSearch API — RapidAPI](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch)
 - [Hunter.io API Docs](https://hunter.io/api-documentation)
 - [Telegram Bot API](https://core.telegram.org/bots/api)
 - [Google OAuth Setup](https://developers.google.com/identity/protocols/oauth2)
@@ -454,10 +486,9 @@ If you build on this or improve it, please submit a PR there. The repo has 26k+ 
 
 - 🐦 X: [@hkaanturgut](https://x.com/hkaanturgut)
 - 💼 LinkedIn: [linkedin.com/in/hkaanturgut](https://linkedin.com/in/hkaanturgut)
-- 🏢 Currently: Lenovo North America
 
 ---
 
-*Built with 🦞 OpenClaw + ☁️ Azure + 🤖 Claude Sonnet 4.6*
+*Built with 🦞 OpenClaw + 🤖 Claude Sonnet 4.6*
 
 *Presented at OpenClaw Toronto Meetup — March 26, 2026*
