@@ -230,30 +230,9 @@ openclaw agents add main
 > Close and reopen PowerShell, then run the commands above.
 
 ---
-
-### Step 2 — Install Required Skills
-
-> **Do this before any other setup.** The `gog` skill creates the `skills/gog/` folder that Gmail OAuth depends on in the next step.
-
-Send these to your bot one by one:
-
-```
-Install the gog skill from ClawHub
-```
-```
-Install the cold-email-writer skill from ClawHub
-```
-
-Verify the folder was created:
-```powershell
-dir "C:\Users\Administrator\.openclaw\workspace\skills"
-```
-
-You should see `gog/` and `cold-email-writer/` folders before continuing.
-
 ---
 
-### Step 3 — Connect Telegram
+### Step 2 — Connect Telegram
 
 1. Message [@BotFather](https://t.me/botfather) → `/newbot` → copy your token
 2. Add to OpenClaw config:
@@ -279,6 +258,26 @@ openclaw pairing approve telegram YOUR_CODE
 ```
 
 ---
+
+### Step 3 — Install Required Skills
+
+> **Do this before any other setup.** The `gog` skill creates the `skills/gog/` folder that Gmail OAuth depends on in the next step.
+
+Send these to your bot one by one:
+
+```
+Install the gog skill from ClawHub
+```
+```
+Install the cold-email-writer skill from ClawHub
+```
+
+Verify the folder was created:
+```powershell
+dir "C:\Users\Administrator\.openclaw\workspace\skills"
+```
+
+You should see `gog/` and `cold-email-writer/` folders before continuing.
 
 ### Step 4 — Connect Gmail
 
