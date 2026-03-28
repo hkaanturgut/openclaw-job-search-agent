@@ -204,7 +204,11 @@ Best, [Your Name]
 
 ## 🚀 Setup Guide
 
-### Step 1 — OpenClaw Installation & Configuration
+> **⚠️ Follow these steps in order.** Each step creates folders and config that the next step depends on.
+
+---
+
+### Step 1 — Install OpenClaw
 
 > **References:**
 > - [Getting Started](https://docs.openclaw.ai/start/getting-started)
@@ -212,13 +216,44 @@ Best, [Your Name]
 > - [Windows Setup](https://docs.openclaw.ai/platforms/windows)
 
 ```bash
+npm install -g openclaw
 openclaw onboard --install-daemon
+openclaw gateway start
 openclaw agents add main
 ```
 
+> **Windows users — if `openclaw` is not recognized after install, fix the PATH first:**
+> ```powershell
+> npm config set prefix "$env:USERPROFILE\AppData\Roaming\npm"
+> [System.Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";$env:USERPROFILE\AppData\Roaming\npm", "Machine")
+> ```
+> Close and reopen PowerShell, then run the commands above.
+
 ---
 
-### Step 2 — Connect Telegram
+### Step 2 — Install Required Skills
+
+> **Do this before any other setup.** The `gog` skill creates the `skills/gog/` folder that Gmail OAuth depends on in the next step.
+
+Send these to your bot one by one:
+
+```
+Install the gog skill from ClawHub
+```
+```
+Install the cold-email-writer skill from ClawHub
+```
+
+Verify the folder was created:
+```powershell
+dir "C:\Users\Administrator\.openclaw\workspace\skills"
+```
+
+You should see `gog/` and `cold-email-writer/` folders before continuing.
+
+---
+
+### Step 3 — Connect Telegram
 
 1. Message [@BotFather](https://t.me/botfather) → `/newbot` → copy your token
 2. Add to OpenClaw config:
@@ -245,26 +280,27 @@ openclaw pairing approve telegram YOUR_CODE
 
 ---
 
-### Step 3 — Connect Gmail
+### Step 4 — Connect Gmail
+
+> **Requires Step 2 to be completed first** — the `skills/gog/` folder must exist.
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com) → create project `OpenClaw`
 2. Enable **Gmail API** and **Google Calendar API**
-3. Create OAuth credentials → **Desktop app** → download `client_secret.json`
-4. Place it at:
+3. Go to **OAuth consent screen** → External → add your Gmail as a **Test User**
+4. Create OAuth credentials → **Desktop app** → download `client_secret.json`
+5. Place it at:
 ```
 C:\Users\Administrator\.openclaw\workspace\skills\gog\client_secret.json
 ```
-5. Tell your bot:
+6. Tell your bot:
 ```
 The client_secret.json is in skills/gog/ — run the Google OAuth authentication flow now
 ```
-6. Click the OAuth URL, sign in with your Gmail, copy the redirect URL back to your bot
-
-> **Note:** Add your Gmail as a Test User in the OAuth consent screen before authenticating.
+7. Click the OAuth URL, sign in with your Gmail, copy the redirect URL back to your bot
 
 ---
 
-### Step 4 — Set Up JSearch (RapidAPI)
+### Step 5 — Set Up JSearch (RapidAPI)
 
 1. Sign up at [rapidapi.com](https://rapidapi.com)
 2. Subscribe to [JSearch API](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch) — Basic plan ($10/month)
@@ -278,9 +314,11 @@ Test it with query "Senior DevOps Engineer remote Canada", num_pages=1
 Show me the first 3 results with job_title, employer_name, job_apply_link
 ```
 
+Confirm you see 3 real jobs with real apply links before continuing.
+
 ---
 
-### Step 5 — Set Up Hunter.io
+### Step 6 — Set Up Hunter.io
 
 1. Sign up free at [hunter.io](https://hunter.io)
 2. Copy your API key
@@ -294,15 +332,9 @@ For each company try these domain variations in order:
 Call: GET https://api.hunter.io/v2/domain-search?domain=DOMAIN&api_key=YOUR_KEY
 ```
 
----
-
-### Step 6 — Install Required Skills
-
+4. Check your remaining quota:
 ```
-Install the cold-email-writer skill from ClawHub
-```
-```
-Install the gog skill from ClawHub
+Call GET https://api.hunter.io/v2/account?api_key=YOUR_KEY and tell me how many searches I have left this month
 ```
 
 ---
@@ -379,19 +411,6 @@ Run now as first test.
 
 ---
 
-### Step 9 — Organize with Telegram Topics (Optional)
-
-1. Create a Telegram group — e.g. `Your AI Hub`
-2. Add your bot as **Admin** with full permissions
-3. Enable **Topics** in group settings
-4. Create topics: `🔍 Job Search` · `☀️ Morning Brief` · `📺 YouTube Digest` · `⚙️ Config`
-5. In each topic send:
-```
-You are now in the [Topic Name] topic. Always send [relevant content] to this topic only.
-```
-
----
-
 ## 🔒 Security Considerations
 
 | Risk | Mitigation |
@@ -424,40 +443,8 @@ C:\Users\Administrator\.openclaw\
     ├── nightly_job_search_stable.py     # Main cron script
     └── skills/
         ├── gog/                         # Google Workspace (Gmail + Calendar)
-        │   └── client_secret.json
+        │   └── client_secret.json       # ← Place here AFTER installing gog skill
         └── cold-email-writer/           # Personalized email drafting
-```
-
----
-
-## 💡 Extending the Agent
-
-### Morning Briefing
-```
-Every morning at 8am Toronto time, send me:
-1. Today's weather in Toronto
-2. My Google Calendar events for today
-3. Top 3 AI and DevOps news from the web
-4. One build idea for the day
-```
-
-### YouTube Digest
-```
-Every morning at 9am, search YouTube for new videos about OpenClaw,
-Microsoft AI Foundry, and GitHub Copilot. For each new video give me
-a 3-bullet summary and note anything relevant to my work.
-```
-
-### Interview Prep Agent
-```
-I have an interview at [company] tomorrow. Research them, pull our
-email history, find 3 talking points, and send me a prep brief tonight.
-```
-
-### Auto Follow-up
-```
-5 days after any "outreach sent" entry in job-applications.md with no
-reply, draft a follow-up email and send it to me for approval.
 ```
 
 ---
