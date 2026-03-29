@@ -4,6 +4,9 @@
 > **Presented at [OpenClaw Toronto Meetup](https://www.meetup.com/openclaw-toronto/) — March 26, 2026**
 > Built by [Kaan Turgut](https://www.linkedin.com/in/hkaanturgut/)
 
+## 🎬 Demo Video
+
+[![I Let AI Apply to Jobs for Me (It Actually Worked)](https://img.youtube.com/vi/WKJOmi9YSjM/maxresdefault.jpg)](https://www.youtube.com/watch?v=WKJOmi9YSjM)
 ---
 
 ## 🎯 What This Does
